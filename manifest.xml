@@ -12,6 +12,7 @@
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/servo_controller</url>
+  <depend package="roscpp"/>
 
 </package>
 
