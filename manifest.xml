@@ -1,0 +1,18 @@
+<package>
+  <description brief="servo_controller">
+
+     servo_controller
+
+     This program controls a series of servos that are connected to a
+     Pololu Maestro servo control board.  A bluetooth module is used
+     for wireless communication.
+
+  </description>
+  <author>Jarvis Schultz</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/servo_controller</url>
+
+</package>
+
+
