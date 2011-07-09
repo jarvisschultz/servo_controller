@@ -43,7 +43,8 @@ int fd;
 struct termios oldtio,newtio;
 unsigned int NUM_FRAMES = 0;
 int offset_array[NUM_SERVOS] = {-60,0,160,120,30,70,-20,-160};
-std::string working_dir;
+std::string filename;
+
 
 /*******************************************************************************
  * FUNCTION DECLARATIONS *******************************************************
@@ -89,17 +90,12 @@ public:
 	start_flag = true;
 	current_frame = 0;
 
-	ROS_INFO("Reading Controls\n");
-
-	// Get filenames:
-	getcwd(path, sizeof(path));
-	std::string working_dir(path);
-	std::size_t found = working_dir.find("src");  
-	working_dir = working_dir.substr(0, found);  
-	std::string file_dir = "data/"; 
-	std::string filename = working_dir + file_dir + "WalkingTable.csv";
 	// Read controls:
+	ROS_INFO("Reading Controls");
 	animation = ReadControls(filename);
+	ROS_INFO("Done Reading controls");
+
+	// send_calibrate_frame();
 
 	// Check for system operating_condition parameter:
 	if(ros::param::has("operating_condition"))
@@ -112,6 +108,7 @@ public:
 	    ROS_WARN("Cannot Find Parameter: operating_condition");
 	    ros::param::set("/operating_condition", 0);
 	}
+	ROS_INFO("Waiting for operating_condition to be set to run");
 
 	// create timer:
 	timer = n_.createTimer(ros::Duration(0.01), &ServoController::timerCallback, this);
@@ -147,8 +144,10 @@ public:
 
 		// calculate total delay time:
 		delay_time = ((ros::Time::now()).toSec()-base_time.toSec())*1000.0;
+
 		if (delay_time >= (&animation->frame_array[current_frame])->pause)
 		{
+		    ROS_DEBUG("Sending new servo commands");
 		    // Then send data, and reset timers:
 		    send_animation(animation);
 		    timer_flag = true;
@@ -164,9 +163,6 @@ public:
 	    char dest[PACKET_SIZE];
 	    memset(dest,0,sizeof(dest));
 
-	    // Set the position command byte:
-	    dest[0] = 0x84;
-
 	    // set the channel value:
 	    if (((int) servo->chan >= 0) && ((int) servo->chan <= MAX_CHANNELS))
 		dest[1] = servo->chan;
@@ -175,25 +171,8 @@ public:
 		puts("ERROR: Channel out of range");
 		return;
 	    }
-
-	    // set position value:
-	    if ((int) servo->range >= (MIN_PULSE+offset_array[servo->chan])*4 &&
-		(int) servo->range <= (MAX_PULSE+offset_array[servo->chan])*4)
-	    {
-		dest[2] = servo->range & 0x7F;
-		dest[3] = ((servo->range) >> 7) & 0x7F;
-	    }
-	    else
-	    {
-		puts("ERROR: Position out of range");
-		return;
-	    }
-        
-	    // Now we can send the data:
-	    write(fd, dest, PACKET_SIZE);
-	    fsync(fd);
-
-	    // Now repeat for the speed packet:
+	    
+	    // Send the speed packet:
 	    dest[0] = 0x87;
 
 	    if ((int) servo->ramp >=0 && (int) servo->ramp <= MAX_SPEED)
@@ -206,6 +185,28 @@ public:
 		puts("ERROR: Speed out of range");
 		return;
 	    }
+	    // Now we can send the data:
+	    write(fd, dest, PACKET_SIZE);
+	    fsync(fd);
+
+
+	    // Set the position command byte:
+	    dest[0] = 0x84;
+	    // set position value:
+	    if ((int) servo->range >= (MIN_PULSE+offset_array[servo->chan])*4 &&
+		(int) servo->range <= (MAX_PULSE+offset_array[servo->chan])*4)
+	    {
+		dest[2] = servo->range & 0x7F;
+		dest[3] = ((servo->range) >> 7) & 0x7F;
+	    }
+	    else
+	    {
+		puts("ERROR: Position out of range");
+		return;
+	    }
+	    // Now we can send the data:
+	    write(fd, dest, PACKET_SIZE);
+	    fsync(fd);
 	}
 
 
@@ -226,10 +227,11 @@ public:
 	{
 	    if (start_flag == true)
 	    {
+		ROS_INFO("Starting Animation");
 		current_frame = 0;
 		start_flag = false;
 	    }
-	    ROS_INFO("FRAME NUMBER %d",current_frame);
+	    ROS_INFO("FRAME NUMBER %u",current_frame);
 	    send_frame(&animation->frame_array[current_frame]);
 	    current_frame++;
 	    if(current_frame>(NUM_FRAMES-1)) current_frame = 0;
@@ -252,6 +254,7 @@ public:
 	    getline(file, line);
 	    // Get number of frames:
 	    std::stringstream ss(line);
+	    
 	    ss >> temp >> NUM_FRAMES;
 
 	    // Read and ignore headers:
@@ -270,7 +273,6 @@ public:
 		getline(file, line, ',');
 		std::stringstream ss(line);
 		ss >> temp_int;
-		printf("%d, ",temp_int);
 		pause_array[i] = temp_int;
 
 		// Get ramp values:
@@ -279,7 +281,6 @@ public:
 		    getline(file, line, ',');
 		    std::stringstream ss(line);
 		    ss >> temp_int;
-		    printf("%d, ",temp_int);
 		    ramp_array[i*NUM_SERVOS+j] = temp_int;
 		}
 
@@ -289,10 +290,8 @@ public:
 		    getline(file, line, ',');
 		    std::stringstream ss(line);
 		    ss >> temp_int;
-		    printf("%d, ",temp_int);
 		    range_array[i*NUM_SERVOS+j] = temp_int;
 		}
-		printf("\n\r");
 	    }
 	    
 	    // Now, we need to define the size of the show struct:
@@ -308,7 +307,7 @@ public:
 		{
 		    temp_servo.chan = j;
 		    temp_servo.ramp = (1-ramp_array[i*NUM_SERVOS+j]/63)*MAX_SPEED;
-		    temp_servo.range = (range_array[i*NUM_SERVOS+j]+offset_array[j])*4;
+		    temp_servo.range = (range_array[i*NUM_SERVOS+j]*2+offset_array[j])*4;
 		    temp_frame.servo_array[j] = temp_servo;
 		}
 		temp_frame.pause = pause_array[i];
@@ -380,12 +379,73 @@ void send_calibrate_frame(void)
 }
 
 
+// command_line parsing:
+void command_line_parser(int argc, char** argv)
+{
+    std::string working_dir,  file;
+   
+    // First set the global working directory to the location of the
+    // binary:
+    working_dir = argv[0];
+
+    int fflag = 0, pflag = 0;
+    int index;
+    int c;
+     
+    opterr = 0;
+     
+    while ((c = getopt (argc, argv, "f:p:")) != -1)
+    {
+	switch (c)
+	{
+	case 'f':
+	    fflag = 1;
+	    file = optarg;
+	    break;
+	case 'p':
+	    pflag = 1;
+	    working_dir = optarg;
+	    break;
+	case ':':
+	    fprintf(stderr,
+		    "No argument given for command line option %c \n\r", c);
+	default:
+	    fprintf(stderr, "Usage: %s [-f filename] [-p path-to-file]\n",
+		    argv[0]);
+	    exit(EXIT_FAILURE);
+	}
+    }
+     
+    for (index = optind; index < argc; index++)
+    	printf ("Non-option argument %s\n", argv[index]);
+    if (pflag != 1)
+    {
+	// Then we just use the default path:
+	std::size_t found = working_dir.find("bin");
+	std::string tmp_dir = working_dir.substr(0, found);
+	working_dir = tmp_dir+"data/";
+    }
+ 
+    if (fflag == 0)
+    {
+	// No file was given:
+	file = "default.txt";
+    }
+  
+    // Get filenames:
+    filename = working_dir + file;
+    cout << filename << "\n";
+    return;
+}
+
 
 int main(int argc, char** argv)
 {
     // Create ROS Node:
     ros::init(argc, argv, "servo_controller");
     ros::NodeHandle n;
+
+    command_line_parser(argc, argv);
 
     // instantiate a ServoController class object
     ServoController controller1;
