@@ -30,7 +30,7 @@ using namespace std;
  ******************************************************************************/ 
 
 #define		BAUDRATE	B115200
-#define		MODEMDEVICE	"/dev/rfcomm0"
+#define		MODEMDEVICE	"/dev/ttyUSB0"
 #define 	_POSIX_SOURCE	1 /* POSIX compliant source */
 #define         PACKET_SIZE	4
 #define		NUM_SERVOS	8
@@ -90,7 +90,7 @@ public:
 	start_flag = true;
 	current_frame = 0;
 
-	// Read controls:
+	// Reading controls:
 	ROS_INFO("Reading Controls");
 	animation = ReadControls(filename);
 	ROS_INFO("Done Reading controls");
@@ -313,6 +313,7 @@ public:
 		temp_frame.pause = pause_array[i];
 		animation->frame_array[i] = temp_frame;
 	    }
+	    file.close();
 	    return(animation);  
 	}
 
@@ -335,7 +336,7 @@ void init_comm(void)
     bzero(&newtio, sizeof(newtio)); /* clear struct for new port settings */
 
     // Set all desired settings:
-    newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
+    newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD | CSTOPB;
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag &= ~OPOST;
     newtio.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
